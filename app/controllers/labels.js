@@ -1,102 +1,92 @@
-'use strict;'
+import mongoose from 'mongoose';
+import rest from '../others/restware.js';
 
-var mongoose = require('mongoose'),
-    Label = mongoose.model('Label'),
+const Label = mongoose.model('Label');
 
-    config = require('../../config/config'),
-
-    rest = require('../others/restware'),
-    _ = require('lodash'),
-
-    path = require('path'),
-    async = require('async');
-
-//Load a object
-exports.loadObject = function (req, res, next, id) {
-
-    Label.load(id, function (err, object) {
-        if (err || !object)
-            return rest.sendError(res,'Unable to get group details',err);
+export const loadObject = async (req, res, next, id) => {
+    try {
+        const object = await Label.load(id);
+        
+        if (!object) {
+            return rest.sendError(res, 'Unable to get label details', new Error('Label not found'));
+        }
 
         req.object = object;
-        next();
-    })
-}
-
-//list of objects
-exports.index = function (req, res) {
-
-    var criteria = {};
-
-    if (req.query['string']) {
-        var str = new RegExp(req.query['string'], "i")
-        criteria['name'] = str;
+        return next();
+    } catch (err) {
+        return rest.sendError(res, 'Unable to get label details', err);
     }
-    //criteria['mode'] = req.query('mode') || null;
+};
 
-    var page = req.query['page'] > 0 ? req.query['page'] : 0
-    var perPage = req.query['per_page'] || 500
+export const index = async (req, res) => {
+    const criteria = {};
 
-    var options = {
-        perPage: perPage,
-        page: page,
-        criteria: criteria
+    if (req.query.string) {
+        const str = new RegExp(req.query.string, 'i');
+        criteria.name = str;
     }
 
-    Label.list(options, function (err, labels) {
-        if (err)
-            return rest.sendError(res, 'Unable to get Label list', err);
-        else
-            return rest.sendSuccess(res, 'sending Label list', labels);
-    })
-}
+    const page = req.query.page > 0 ? Number(req.query.page) : 0;
+    const perPage = req.query.per_page ? Number(req.query.per_page) : 500;
 
-exports.getObject = function (req, res) {
+    const options = { perPage, page, criteria };
 
-    var object = req.object;
-    if (object) {
-        return rest.sendSuccess(res, 'Label details', object);
-    } else {
+    try {
+        const labels = await Label.list(options);
+        return rest.sendSuccess(res, 'Sending Label list', labels);
+    } catch (err) {
+        return rest.sendError(res, 'Unable to get Label list', err);
+    }
+};
+
+export const getObject = async (req, res) => {
+    try {
+        const object = req.object;
+        if (object) {
+            return rest.sendSuccess(res, 'Label details', object);
+        }
+        return rest.sendError(res, 'Unable to retrieve Label details');
+    } catch (err) {
         return rest.sendError(res, 'Unable to retrieve Label details', err);
     }
-
 };
 
-exports.createObject = function (req, res) {
-
-    var object = new Label(req.body);
-    //object.installation = req.installation;
-    if (req.user) {
-        object.createdBy = req.user._id;  //creator of entity
-    }
-    object.save(function (err, data) {
-        if (err) {
-            return rest.sendError(res, 'Error in saving new Label', err || "");
-        } else {
-            return rest.sendSuccess(res, 'new Label added successfully', data);
+export const createObject = async (req, res) => {
+    try {
+        const object = new Label(req.body);
+        
+        if (req.user) {
+            object.createdBy = req.user._id;
         }
-    })
-}
-
-exports.updateObject = function (req, res) {
-    var object = req.object;
-    delete req.body.__v;        //do not copy version key
-    object = _.extend(object, req.body)
-    object.save(function (err, data) {
-        if (err)
-            return rest.sendError(res, 'Unable to update Label', err);
-        return rest.sendSuccess(res, 'updated Label details', data);
-    });
+        
+        const data = await object.save();
+        return rest.sendSuccess(res, 'New Label added successfully', data);
+    } catch (err) {
+        return rest.sendError(res, 'Error in saving new Label', err);
+    }
 };
 
+export const updateObject = async (req, res) => {
+    try {
+        const object = req.object;
+        delete req.body.__v;
 
-exports.deleteObject = function (req, res) {
+        Object.assign(object, req.body);
 
-    var object = req.object;
-    object.remove(function (err) {
-        if (err)
-            return rest.sendError(res, 'Unable to remove Label', err);
-        else
-            return rest.sendSuccess(res, 'Label deleted successfully');
-    })
-}
+        const data = await object.save();
+        return rest.sendSuccess(res, 'updated Label details', data);
+    } catch (err) {
+        return rest.sendError(res, 'Unable to update Label', err);
+    }
+};
+
+export const deleteObject = async (req, res) => {
+    try {
+        const object = req.object;
+        
+        await object.deleteOne();
+        return rest.sendSuccess(res, 'Label deleted successfully');
+    } catch (err) {
+        return rest.sendError(res, 'Unable to remove Label', err);
+    }
+};

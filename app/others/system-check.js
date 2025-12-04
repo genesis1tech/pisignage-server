@@ -1,74 +1,73 @@
-var async = require('async'),
-	fs = require('fs'),
-	config = require('../../config/config'),
-	exec = require('child_process').exec;
+import fs from 'fs/promises';
+import config from '../../config/config.js';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
-module.exports = function(){
-	var errors = 0;
-    async.series([
-		function(cb){
-			fs.exists(config.mediaDir,function(exists){
-				if(!exists){
-                    fs.mkdir(config.mediaDir,0777,function (err) {
-                        if (err) {
-                            console.log('*****************************************************');
-                            console.log('*     Unable to create media directory, exiting     *');
-                            console.log('*****************************************************\n');
-                            process.exit(1);
-                        } else {
-                            cb()
-                        }
-                    })
-				} else
-				    cb();
-			})
-		},
-		function(cb){
-			fs.exists(config.thumbnailDir,function(exists){
-				if(!exists){
-                    fs.mkdir(config.thumbnailDir,0777,function (err) {
-                        if (err) {
-                            console.log('********************************************************************');
-                            console.log('* media/_thumbnails directory absent, thumbnails cannot be created *');
-                            console.log('********************************************************************\n');
-                            errors++;
-                        }
-                        cb()
-                    })
-                } else
-				    cb();
-			})
-		},
-		function(cb){
-			exec('ffprobe -version',function(err,stdout,stderr){
-				if(err){
-					console.log('****************************************************************');
-					console.log('*  Please install ffmpeg, videos cannot be uploaded otherwise  *');
-					console.log('****************************************************************\n');
-                    console.log(err)
-                    errors++;
-                }
-				cb();
-			})
-		},
-		function(cb){
-			exec('convert -version',function(err,stdout,stderr){
-                if(err){
-					console.log('*********************************************************************');
-					console.log('* Please install imagemagik, otherwise thumbnails cannot be created *');
-					console.log('*********************************************************************\n');
-                    console.log(err)
-                    errors++;
-                }
-				cb();
-			})
-		}
-	],function(err){
-		console.log('********************************************');
-		if (errors)
-            console.log('*  system check complete with '+errors+' errors     *');
-        else
-            console.log('*        system check passed               *');
-        console.log('********************************************');
-	})
+const execAsync = promisify(exec);
+
+export default async function systemCheck() {
+    let errors = 0;
+
+    // Check 1: Create media directory if it doesn't exist
+    try {
+        await fs.access(config.mediaDir);
+        // Directory exists, do nothing
+    } catch (err) {
+        // Directory doesn't exist, create it
+        try {
+            await fs.mkdir(config.mediaDir, { recursive: true, mode: 0o777 });
+        } catch (mkdirErr) {
+            console.log('*****************************************************');
+            console.log('*     Unable to create media directory, exiting     *');
+            console.log('*****************************************************\n');
+            process.exit(1);
+        }
+    }
+
+    // Check 2: Create thumbnail directory if it doesn't exist
+    try {
+        await fs.access(config.thumbnailDir);
+        // Directory exists, do nothing
+    } catch (err) {
+        // Directory doesn't exist, create it
+        try {
+            await fs.mkdir(config.thumbnailDir, { recursive: true, mode: 0o777 });
+        } catch (mkdirErr) {
+            console.log('********************************************************************');
+            console.log('* media/_thumbnails directory absent, thumbnails cannot be created *');
+            console.log('********************************************************************\n');
+            errors++;
+        }
+    }
+
+    // Check 3: Verify ffprobe (ffmpeg) is installed
+    try {
+        await execAsync('ffprobe -version');
+    } catch (err) {
+        console.log('****************************************************************');
+        console.log('*  Please install ffmpeg, videos cannot be uploaded otherwise  *');
+        console.log('****************************************************************\n');
+        console.log(err);
+        errors++;
+    }
+
+    // Check 4: Verify ImageMagick is installed
+    try {
+        await execAsync('convert -version');
+    } catch (err) {
+        console.log('*********************************************************************');
+        console.log('* Please install imagemagik, otherwise thumbnails cannot be created *');
+        console.log('*********************************************************************\n');
+        console.log(err);
+        errors++;
+    }
+
+    // Summary
+    console.log('********************************************');
+    if (errors) {
+        console.log(`*  system check complete with ${errors} errors     *`);
+    } else {
+        console.log('*        system check passed               *');
+    }
+    console.log('********************************************');
 }
