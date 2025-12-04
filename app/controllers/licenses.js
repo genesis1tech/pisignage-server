@@ -1,7 +1,9 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { exec } from 'child_process';
+import { fork , exec } from 'child_process';
 import mongoose from 'mongoose';
+import { promisify } from 'util';
+const execAsync = promisify(exec);
 import config from '../../config/config.js';
 import rest from '../others/restware.js';
 import ip from 'ip';
@@ -69,73 +71,127 @@ export const deleteLicense = async (req, res) => {
     }
 }
 
-exports.getSettingsModel = function(cb) {
-    Settings.findOne(function (err, settings) {
-        if (err || !settings) {
+export const getSettingsModel = async () => {
+    try {
+        const settings = await Settings.findOne();
+        if (!settings) {
+            // No settings document exists, check cache
             if (settingsModel) {
-                cb(null, settingsModel)
+                return settingsModel;
             } else {
+                // Create new Settings document with defaults
                 settingsModel = new Settings();
-                settingsModel.save(cb);
+                await settingsModel.save();
+                return settingsModel;
             }
-        } else {
-            cb(null,settings);
         }
-    })
-}
-
-exports.getSettings = function(req,res) {
-    exports.getSettingsModel(function (err, data) {
-        if (err) {
-            return rest.sendError(res, 'Unable to access Settings', err);
-        } else {
-            var obj = data.toObject()
-            obj.serverIp = serverIp;
-            exec('git log -1 --format="%cd" && git log -1 --format="%H"',function(err,stdout,stderr){
-                if(err || stderr){
-                    obj.date = 'N/A';
-                    obj.version = 'N/A';
-                    console.log('There was an error obtaining the current server version from git:');
-                    console.log(stderr);
-                }else{
-                    stdout = stdout.trim().split('\n');
-                    obj.date = [stdout[0].split(' ')[1],stdout[0].split(' ')[2],stdout[0].split(' ')[4]].join(' '); 
-                    obj.version = stdout[1].slice(0,6);
-                }
-                return rest.sendSuccess(res, 'Settings', obj);
-            });
+        return settings;
+    } catch (err) {
+        // On database error, return cached version if available
+        if (settingsModel) {
+            console.warn('Database error, returning cached settings:', err);
+            return settingsModel;
         }
-    })
-}
+        throw err;
+    }
+};
 
-exports.updateSettings = function(req,res) {
-    var restart;
-    Settings.findOne(function (err, settings) {
-        if (err)
-            return rest.sendError(res, 'Unable to update Settings', err);
 
-        //if (settings.installation != req.body.installation)
-        restart = true;
-        if (settings)
-            settings = _.extend(settings, req.body)
-        else
+export const getSettings = async (req, res) => {
+    try {
+        // Get settings from database
+        const data = await getSettingsModel();
+        const obj = data.toObject();
+        obj.serverIp = serverIp;
+        
+        // Try to get Git version info
+        try {
+            const { stdout } = await execAsync('git log -1 --format="%cd" && git log -1 --format="%H"');
+            const lines = stdout.trim().split('\n');
+            
+            // Parse date: "Mon Jan 15 10:30:45 2024 +0000" -> "Jan 15 2024"
+            const dateParts = lines[0].split(' ');
+            obj.date = [dateParts[1], dateParts[2], dateParts[4]].join(' ');
+            
+            // Get first 6 characters of commit hash
+            obj.version = lines[1].slice(0, 6);
+        } catch (gitErr) {
+            // Git command failed, use defaults
+            obj.date = 'N/A';
+            obj.version = 'N/A';
+            console.log('There was an error obtaining the current server version from git:', gitErr.message);
+        }
+        
+        return rest.sendSuccess(res, 'Settings', obj);
+    } catch (err) {
+        return rest.sendError(res, 'Unable to access Settings', err);
+    }
+};
+
+//Need to verify this function, restart logic is not clear
+export const updateSettings = async (req, res) => {
+    try {
+        // Validate request body
+        if (!req.body || Object.keys(req.body).length === 0) {
+            return rest.sendError(res, 'No settings provided to update');
+        }
+        
+        // Find existing settings
+        let settings = await Settings.findOne();
+        
+        // Track if installation changed (determines if restart needed)
+        const installationChanged = settings && 
+                                   req.body.installation &&
+                                   settings.installation !== req.body.installation;
+        
+        if (settings) {
+            // Update existing settings
+            Object.assign(settings, req.body);
+        } else {
+            // Create new settings document
             settings = new Settings(req.body);
-        settings.save(function (err, data) {
-            if (err) {
-                rest.sendError(res, 'Unable to update Settings', err);
-            } else {
-                rest.sendSuccess(res, 'Settings Saved', data);
-            }
-            if (restart)  {
-                console.log("restarting server")
-                require('child_process').fork(require.main.filename);
+        }
+        
+        // Save to database
+        const data = await settings.save();
+        
+        // Update cache
+        settingsModel = data;
+        
+        // Update licenseDir if installation changed
+        if (installationChanged) {
+            licenseDir = config.licenseDirPath + (data.installation || 'local');
+        }
+        
+        // Send success response
+        rest.sendSuccess(res, 'Settings Saved', data);
+        
+        // Restart server if installation changed
+        if (installationChanged) {
+            console.log('Installation changed, restarting server...');
+            // Give time for response to be sent
+            setTimeout(() => {
+                fork(process.argv[1]);
                 process.exit(0);
-            }
-        });
-    })
-}
+            }, 500);
+        }
+    } catch (err) {
+        return rest.sendError(res, 'Unable to update Settings', err);
+    }
+};
 
-exports.getSettingsModel(function(err,settings){
-    licenseDir = config.licenseDirPath+(settings.installation || "local")
-})
+
+
+
+//Initialize licenseDir verify this function
+
+(async () => {
+    try {
+        const settings = await getSettingsModel();
+        licenseDir = config.licenseDirPath + (settings.installation || "local");
+    } catch (err) {
+        console.error('Error initializing licenseDir, using default:', err);
+        licenseDir = config.licenseDirPath + "local";
+    }
+})();
 
