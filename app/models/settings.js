@@ -1,7 +1,7 @@
-var mongoose = require('mongoose'),
-    Schema = mongoose.Schema
+import mongoose from 'mongoose';
+const { Schema } = mongoose;
 
-var SettingsSchema = new Schema({
+const SettingsSchema = new Schema({
     installation: {type: String , default: "local"},
     newLayoutsEnable: {type: Boolean , default: false},
     systemMessagesHide: {type: Boolean, default: false},
@@ -20,9 +20,8 @@ var SettingsSchema = new Schema({
         user: {type: String , default: 'pi'},
         password: {type: String , default: 'pi'}
     }
-}, {
-    usePushEach: true
-})
+}
+);
 
-mongoose.model('Settings', SettingsSchema)
+export const Settings = mongoose.model('Settings', SettingsSchema);
 

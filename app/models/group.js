@@ -1,8 +1,8 @@
-var mongoose = require('mongoose'),
-    Schema = mongoose.Schema
+import mongoose from 'mongoose';
+const { Schema } = mongoose;
 
-var GroupSchema = new Schema({
-    name:                   {type: String,index: true},
+const GroupSchema = new Schema({
+    name:                   {type: String, index: true, required: true, minlength: 1},
     description:            String,
 
     playlists:              [],
@@ -71,43 +71,38 @@ var GroupSchema = new Schema({
                                 reverse: {type: Boolean, default: false}
                             },
     emergencyMessage:       {
-                                enable: false,
+                                enable: {type: Boolean, default: false},
                                 msg: {type: String, default: ""},
                                 hPos: {type: String, default: "middle"},
                                 vPos: {type: String, default: "middle"}
                             },
     createdAt:              {type: Date, default: Date.now},
     createdBy:              {_id: {type: Schema.ObjectId, ref: 'User'}, name: String}
-}, {
-    usePushEach: true
-})
+}
+);
 
 
-GroupSchema.path('name').validate(function (name) {
-    return name.length > 0
-}, 'name cannot be blank')
+
 
 GroupSchema.statics = {
 
-    load: function (id, cb) {
-        this.findOne({ _id: id })
-            .exec(cb)
+    async load(id) {
+        return await this.findById(id);
     },
 
-    list: function (options, cb) {
-        var criteria = options.criteria || {}
-
+    async list(options) {
+        const criteria = options.criteria || {};
         if (!(criteria.all || criteria.name)) {
-            criteria.name = {"$not": /__player__/}
+            criteria.name = {"$not": /__player__/};
         }
         delete criteria.all;
-        this.find(criteria)
-            .sort({name: 1}) // sort by date
-            .limit(options.perPage)
+        return await this.find(criteria)
+            .sort({ name: 1 })
             .skip(options.perPage * options.page)
-            .exec(cb)
+            .limit(options.perPage)
+            .exec(); 
+
     }
 }
 
-mongoose.model('Group', GroupSchema)
-
+export const Group = mongoose.model('Group', GroupSchema); 

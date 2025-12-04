@@ -1,7 +1,7 @@
-var mongoose = require('mongoose'),
-    Schema = mongoose.Schema
+import mongoose from 'mongoose';
+const { Schema } = mongoose;
 
-var AssetSchema = new Schema({
+const AssetSchema = new Schema({
 
     name: {type: String, index: true},
     type: String,
@@ -14,26 +14,26 @@ var AssetSchema = new Schema({
     validity:               {enable:Boolean, startdate:String,enddate:String,starthour:Number,endhour:Number},
     createdAt: {type: Date, default: Date.now},
     createdBy: {_id: {type: Schema.ObjectId, ref: 'User'}, name: String}
-}, {
-    usePushEach: true
-})
+});
 
-AssetSchema.index({ installation: 1 });
+AssetSchema.index({ createdAt: -1 });
+
 
 AssetSchema.statics = {
-    load: function (id, cb) {
-        this.findOne({_id: id})
-            .exec(cb)
+    async load(id) {
+        return await this.findById(id);
     },
-    list: function (options, cb) {
-        var criteria = options.criteria || {}
 
-        this.find(criteria)
-            .sort({name: 1}) // sort by date
-            .limit(options.perPage)
+    async list(options) {
+        const criteria = options.criteria || {};
+
+        return await this.find(criteria)
+            .sort({ name: 1 }) // sort by date
             .skip(options.perPage * options.page)
-            .exec(cb)
+            .limit(options.perPage)
+            .exec();
     }
-}
+};
 
-mongoose.model('Asset', AssetSchema)
+
+export const Asset = mongoose.model('Asset', AssetSchema);

@@ -1,38 +1,15 @@
-/**
- * Module dependencies.
- */
+import mongoose from 'mongoose';
+const { Schema } = mongoose;
 
-var mongoose = require('mongoose'),
-    Schema = mongoose.Schema
 
-/**
- * Setters and Getters
- */
-
-/**
- * Post Schema
- */
-var LabelSchema= new Schema({
-    name:                   {type: String,unique: true, index: true},
+const LabelSchema= new Schema({
+    name:                   {type: String,unique: true, index: true, required: true, minlength: 1},
     mode:                   {type: String},
 
     createdAt:              {type: Date, default: Date.now},
     createdBy:              {_id: {type: Schema.ObjectId, ref: 'User'}, name: String}
-}, {
-    usePushEach: true
-})
-
-LabelSchema.path('name').validate(function (name) {
-    return name.length > 0
-}, 'name cannot be blank')
-
-
-/**
- * Pre & Post method hooks
- */
-/**
- * Pre-remove hook
- */
+}
+);
 
 
 /**
@@ -40,37 +17,19 @@ LabelSchema.path('name').validate(function (name) {
  */
 
 LabelSchema.statics = {
-    /**
-     * Find article by id
-     *
-     * @param {ObjectId} id
-     * @param {Function} cb
-     * @api private
-     */
-
-    load: function (id, cb) {
-        this.findOne({ _id: id })
-            .exec(cb)
+    async load(id) {
+        return await this.findById(id);
     },
 
-    /**
-     * List articles
-     *
-     * @param {Object} options
-     * @param {Function} cb
-     * @api private
-     */
-
-    list: function (options, cb) {
-        var criteria = options.criteria || {}
-
-        this.find(criteria)
-            .sort({name: 1}) // sort by date
-            .limit(options.perPage)
+    async list(options) {
+        const criteria = options.criteria || {};
+    
+        return await this.find(criteria)
+            .sort({ name: 1 })
             .skip(options.perPage * options.page)
-            .exec(cb)
+            .limit(options.perPage)
+            .exec();  // ✅ Explicitly returns a Promise
     }
-}
+}; 
 
-mongoose.model('Label', LabelSchema)
-
+export const Label = mongoose.model('Label', LabelSchema);
