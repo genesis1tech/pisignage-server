@@ -1,81 +1,80 @@
-'use strict';
 
-var path = require('path'),
-    FFmpeg = require('fluent-ffmpeg'),
-    probe = require('node-ffprobe'),
-    imageMagick = require('gm').subClass({imageMagick: true}),
-    config = require('../../config/config'),
-    fs = require('fs'),
-    async = require('async'),
-    mongoose = require('mongoose'),
-    Asset = mongoose.model('Asset'),
-    _ = require('lodash'),
-    rest = require('../others/restware'),
-    processFile = require('../others/process-file');
+import config from '../../config/config.js';
 
-var sendResponse = function (res, err) {
+import mongoose from 'mongoose';
+import { sendSuccess, sendError } from '../others/restware.js';
+import { processFile } from '../others/process-file.js';
+
+
+const Asset = mongoose.model('Asset');
+
+const sendResponse = (res, err) => {
     if (err) {
-        return rest.sendError(res, 'Assets data queued for processing, but with errors: ', err);
+        return sendError(res, 'Assets data queued for processing, but with errors: ', err);
     } else {
-        return rest.sendSuccess(res, 'Queued for Processing');
+        return sendSuccess(res, 'Queued for Processing');
     }
-}
+};
 
-exports.storeDetails = function (req, res) {
+export const storeDetails = (req, res) => {
+    const files = req.body.files;
 
-    var files = req.body.files;
+    // Process files sequentially without async library
+    const processFilesSequentially = (fileArray, index = 0) => {
+        if (index >= fileArray.length) {
+            console.log(`processed ${fileArray.length} files`);
+            return;
+        }
 
-    async.eachSeries(files, function (fileObj, array_cb) {
-        var filename = fileObj.name.replace(config.filenameRegex, '');
-        processFile.processFile(filename, fileObj.size,  req.body.categories, array_cb)
-    }, function () {
-        console.log("processed " + files.length + " files")
-    });
+        const fileObj = fileArray[index];
+        const filename = fileObj.name.replace(config.filenameRegex, '');
+        
+        processFile(filename, fileObj.size, req.body.categories, () => {
+            processFilesSequentially(fileArray, index + 1);
+        });
+    };
+
+    processFilesSequentially(files);
     sendResponse(res);
-}
+};
 
-exports.storeLinkDetails = function(name, type, categories, cb) {
+export const storeLinkDetails = (name, type, categories, cb) => {
+    processFile(name, 0, categories || [], (err) => {
+        cb();
+    });
+};
 
-    processFile.processFile(name,0,categories || [],function(err){
-        cb()
-    })
-}
+export const updateObject = (req, res) => {
+    Asset.findById(req.body.dbdata._id)
+        .then((asset) => {
+            if (!asset) {
+                return sendError(res, 'Categories saving error', new Error('Asset not found'));
+            }
 
+            delete req.body.dbdata.__v; // do not copy version key
+            
+            // ✅ Better: Use Mongoose's set() method
+            asset.set(req.body.dbdata);
 
-exports.updateObject = function(req,res) {
-    Asset.load(req.body.dbdata._id, function (err, asset) {
-        if (err || !asset) {
-            return rest.sendError(res, 'Categories saving error', err);
-        } else {
-            delete req.body.dbdata.__v;        //do not copy version key
-            asset = _.extend(asset, req.body.dbdata);
-            asset.save(function (err, data) {
-                if (err)
-                    return rest.sendError(res, 'Categories saving error', err);
+            return asset.save();
+        })
+        .then((data) => {
+            return sendSuccess(res, 'Categories saved', data);
+        })
+        .catch((err) => {
+            return sendError(res, 'Categories saving error', err);
+        });
+};
 
-                return rest.sendSuccess(res, 'Categories saved', data);
-            });
-        }
-    })
-}
-
-
-exports.updatePlaylist = function(playlist, assets) {
-    Asset.update({playlists:playlist},{$pull:{playlists:playlist}},{multi:true}, function(err,num) {
-        if (err) {
-            return console.log("error in db update for playlist in assets "+err)
-        } else {
-            //console.log("Deleted playlist from "+num+" records")
-
-            Asset.update({name:{$in: assets}},{$push:{playlists:playlist}},{multi:true}, function(err,num) {
-                if (err) {
-                    return console.log("error in db update for playlist in assets "+err)
-                } else {
-                    //console.log("Updated playlist to "+num+" records")
-                }
-            })
-        }
-    })
-}
-
-
+export const updatePlaylist = async (playlist, assets) => {
+    await Asset.updateMany(
+        { playlists: playlist },
+        { $pull: { playlists: playlist } }
+    );
+    
+    await Asset.updateMany(
+        { name: { $in: assets } },
+        { $push: { playlists: playlist } }
+    );
+    // Errors automatically propagate to caller
+};

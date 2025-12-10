@@ -509,6 +509,11 @@ export const getLinkFileDetails = async (req, res) => {
 
 
 export const updatePlaylist = async (req, res) => {
-    await serverAssets.updatePlaylist(req.body.playlist, req.body.assets);
-    return rest.sendSuccess(res, 'asset update has been queued');
+    try {
+        await serverAssets.updatePlaylist(req.body.playlist, req.body.assets);
+        return rest.sendSuccess(res, 'Playlist updated in assets');
+    } catch (err) {
+        console.error('Error updating playlist:', err);
+        return rest.sendError(res, 'Failed to update playlist in assets', err);
+    }
 };
