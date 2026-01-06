@@ -1,6 +1,4 @@
-'use strict';
-
-module.exports = {
+export default {
     env: 'development',
     https: false,
     port: process.env.PORT || 3000,

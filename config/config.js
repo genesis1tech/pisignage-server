@@ -1,10 +1,20 @@
-'use strict';
+import allConfig from './env/all.js';
+import developmentConfig from './env/development.js';
+import productionConfig from './env/production.js';
+import testConfig from './env/test.js';
 
-var _ = require('lodash');
+// Determine environment (default to development if not set)
+const env = process.env.NODE_ENV || 'development';
 
-/**
- * Load environment configuration
- */
-module.exports = _.extend(
-    require('./env/all.js'),
-    require('./env/' + process.env.NODE_ENV + '.js') || {});
+// Select environment-specific config
+const envConfig = 
+    env === 'development' ? developmentConfig :
+    env === 'production' ? productionConfig :
+    env === 'test' ? testConfig :
+    {};
+
+// Merge base config with environment-specific config (spread replaces _.extend)
+export default {
+    ...allConfig,
+    ...envConfig
+};
