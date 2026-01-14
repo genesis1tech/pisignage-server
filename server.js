@@ -1,63 +1,72 @@
-'use strict';
-
 // Default node environment to development
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 
-var express = require('express'),
-    oldSocketio = require('919.socket.io'),
-    socketio = require('socket.io'),
-    WebSocket = require('ws'),
-    mongoose= require('mongoose');
+// ES6 imports
+import express from 'express';
+import oldSocketio from '919.socket.io';
+import socketio from 'socket.io';
+import { WebSocketServer } from 'ws';
+import mongoose from 'mongoose';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { parse as urlParse } from 'url';
+import fs from 'fs/promises';
+import http from 'http';
+import https from 'https';
+import { readFileSync, writeSync } from 'fs';
+import { startSIO as startSIOOld, emitMessage as emitMessageOld } from './app/controllers/server-socket.js';
+import { startSIO as startSIONew, startSIOWebsocketOnly, emitMessage as emitMessageNew } from './app/controllers/server-socket-new.js';
+import { startSIO as startSIOWebSocket, emitMessage as emitMessageWS } from './app/controllers/server-socket-ws.js';
 
-var path = require('path'),
-    url = require('url'),
-    fs = require('fs');
+// Get __dirname equivalent in ES6 modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Application Config
-var config = require(path.join(__dirname,'/config/config'));
+const config = (await import(path.join(__dirname, '/config/config.js'))).default;
 
-// Connect to database
-mongoose.Promise = global.Promise;
-mongoose.connect(config.mongo.uri,function(error){
-    if (error) {
-        console.log('********************************************');
-        console.log('*          MongoDB Process not running     *');
-        console.log('********************************************\n');
-
-        process.exit(1);
-    }
-});
+// Connect to database (Mongoose 8 - uses async/await, no callbacks)
+try {
+    await mongoose.connect(config.mongo.uri);
+    // Optional: Add success log if you want
+    console.log('MongoDB connected successfully');
+} catch (error) {
+    console.log('********************************************');
+    console.log('*          MongoDB Process not running     *');
+    console.log('********************************************\n');
+    
+    process.exit(1);
+}
 //create docker directories if needed
-fs.mkdir(config.releasesDir, function(err) {
-    if (err && (err.code != 'EEXIST')) {
-        console.log("Error creating logs directory, "+err.code)
+const createDirectoryIfNotExists = async (dir, dirName = 'directory') => {
+    try {
+        await fs.mkdir(dir, { recursive: true });
+    } catch (err) {
+        if (err.code !== 'EEXIST') {
+            console.log(`Error creating ${dirName}, ${err.code}`);
+        }
     }
-});
-fs.mkdir(config.licenseDir, function(err) {
-    if (err && (err.code != 'EEXIST')) {
-        console.log("Error creating logs directory, "+err.code)
-    }
-});
-fs.mkdir(config.syncDir, function(err) {
-    if (err && (err.code != 'EEXIST')) {
-        console.log("Error creating logs directory, "+err.code)
-    }
-});
-fs.mkdir(config.thumbnailDir, function(err) {
-    if (err && (err.code != 'EEXIST')) {
-        console.log("Error creating logs directory, "+err.code)
-    }
-});
+};
+
+await createDirectoryIfNotExists(config.releasesDir, 'releases directory');
+await createDirectoryIfNotExists(config.licenseDir, 'license directory');
+await createDirectoryIfNotExists(config.syncDir, 'sync directory');
+await createDirectoryIfNotExists(config.thumbnailDir, 'thumbnail directory');
 
 
 
-// check system 
-require('./app/others/system-check')();
+// Check system
+import systemCheck from './app/others/system-check.js';
+await systemCheck();
+
 // Bootstrap models
-var modelsPath = path.join(__dirname, 'app/models');
-fs.readdirSync(modelsPath).forEach(function (file) {
-    require(modelsPath + '/' + file);
-});
+const modelsPath = path.join(__dirname, 'app/models');
+const modelFiles = await fs.readdir(modelsPath);
+
+for (const file of modelFiles) {
+    // Import each model file (this registers the model with Mongoose)
+    await import(`${modelsPath}/${file}`);
+}
 
 console.log('********************************************************************');
 console.log('*    After update if you do not see your groups, please change     *');
@@ -65,28 +74,27 @@ console.log('*    change the uri variable to "mongodb://localhost/pisignage-dev"
 console.log('*    in config/env/development.js and restart the server           *');
 console.log('******************************************************************\n');
 
-
-var app = express();
+const app = express();
 
 // Express settings
-require('./config/express')(app);
+const configureExpress = (await import('./config/express.js')).default;
+configureExpress(app);
 
 // Start server
-var server;
+let server;
 if (config.https) {
-    var https_options = {
-        key: fs.readFileSync("./pisignage-server-key.pem"),
-        cert: fs.readFileSync("./pisignage-server-cert.pem"),
+    const https_options = {
+        key: readFileSync("./pisignage-server-key.pem"),
+        cert: readFileSync("./pisignage-server-cert.pem"),
         passphrase: 'pisignage'
     };
-    server = require('https').createServer(https_options, app);
-}
-else {
-    server = require('http').createServer(app);
+    server = https.createServer(https_options, app);
+} else {
+    server = http.createServer(app);
 }
 
-var io = oldSocketio.listen(server,{'destroy upgrade':false});
-var ioNew = socketio(server,{
+const io = oldSocketio.listen(server, { 'destroy upgrade': false });
+const ioNew = socketio(server, {
     path: '/newsocket.io',
     serveClient: true,
     // below are engine.IO options
@@ -96,7 +104,7 @@ var ioNew = socketio(server,{
     maxHttpBufferSize: 10e7
 });
 
-var ioNewWebsocketOnly = socketio(server, {
+const ioNewWebsocketOnly = socketio(server, {
     path: "/wssocket.io",
     serveClient: true,
     // below are engine.IO options
@@ -108,44 +116,69 @@ var ioNewWebsocketOnly = socketio(server, {
 
 
 
-//Bootstrap socket.io
-require('./app/controllers/server-socket').startSIO(io);
-require('./app/controllers/server-socket-new').startSIO(ioNew);
-require("./app/controllers/server-socket-new").startSIOWebsocketOnly(ioNewWebsocketOnly);
 
-var wss = new WebSocket.Server({server:server,path:"/websocket"});
-require("./app/controllers/server-socket-ws").startSIO(wss);
-            server.on('upgrade', function upgrade(request, socket, head) {
-                var pathname = url.parse(request.url).pathname;
-                if (pathname === '/WebSocket') {
-                    wss.handleUpgrade(request, socket, head, function done(ws) {
-                        wss.emit('connection', ws, request);
-                    });
-                }
-            });
 
-require('./app/controllers/scheduler');
+    // Bootstrap socket.io
+startSIOOld(io);
+startSIONew(ioNew);
+startSIOWebsocketOnly(ioNewWebsocketOnly);
 
-server.listen(config.port, function () {
+// Bootstrap WebSocket
+const wss = new WebSocketServer({ server, path: "/websocket" });
+startSIOWebSocket(wss);
+
+server.on('upgrade', (request, socket, head) => {
+    const pathname = urlParse(request.url).pathname;
+    if (pathname === '/WebSocket') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+            wss.emit('connection', ws, request);
+        });
+    }
+});
+
+// Import scheduler
+await import('./app/controllers/scheduler.js');
+
+server.listen(config.port, () => {
     console.log('Express server listening on port %d in %s mode', config.port, app.get('env'));
 });
 
-server.on('connection', function(socket) {
+server.on('connection', (socket) => {
     // 60 minutes timeout
     socket.setTimeout(3600000);
 });
-server.on('error', function (err) {console.log("caught ECONNRESET error 1");console.log(err)});
-io.on('error', function (err) {console.log("caught ECONNRESET error 2");console.log(err)});
-io.sockets.on('error', function (err) {console.log("caught ECONNRESET error 3");console.log(err)});
-ioNew.on('error', function (err) {console.log("caught ECONNRESET error 4");console.log(err)});
-ioNew.sockets.on('error', function (err) {console.log("caught ECONNRESET error 5");console.log(err)});
-process.on('uncaughtException', function(err, origin) {
-    fs.writeSync(
+
+server.on('error', (err) => {
+    console.log("caught ECONNRESET error 1");
+    console.log(err);
+});
+
+io.on('error', (err) => {
+    console.log("caught ECONNRESET error 2");
+    console.log(err);
+});
+
+io.sockets.on('error', (err) => {
+    console.log("caught ECONNRESET error 3");
+    console.log(err);
+});
+
+ioNew.on('error', (err) => {
+    console.log("caught ECONNRESET error 4");
+    console.log(err);
+});
+
+ioNew.sockets.on('error', (err) => {
+    console.log("caught ECONNRESET error 5");
+    console.log(err);
+});
+
+process.on('uncaughtException', (err, origin) => {
+    writeSync(
         process.stderr.fd,
-        '***WARNING***  Caught exception: '+err+', Exception origin: '+origin + '*******\n'
+        `***WARNING***  Caught exception: ${err}, Exception origin: ${origin}*******\n`
     );
-})
+});
 
 // Expose app
-module.exports = app;
-
+export default app;

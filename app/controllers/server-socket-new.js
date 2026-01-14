@@ -1,73 +1,70 @@
-'use strict';
+import players from './players.js';
 
-var iosockets = null;     //holds all the clients io.sockets
-var iosocketsWebsocketOnly = null;     //holds all the clients io.sockets
+let iosockets = null;     //holds all the clients io.sockets
+let iosocketsWebsocketOnly = null;     //holds all the clients io.sockets
 
-var players = require('./players'),
-    _ = require('lodash');
 
-var handleClient = function (socket) {
+const handleClient = (socket) => {
 
     //console.log("connection with 2.1.1 socket.io : "+socket.id);
-    socket.on('status', function (settings, status, priority) {
-        var statusObject = _.extend(
-            {
-                lastReported: Date.now(),
-                ip: socket.handshake.headers['x-forwarded-for'] || socket.handshake.address.address,
-                socket: socket.id,
-                priority: priority
-            },
-            settings,
-            status
-        )
+    socket.on('status', (settings, status, priority) => {
+        const safeSettings = (settings && typeof settings === 'object') ? settings : {};
+        const safeStatus   = (status   && typeof status   === 'object') ? status   : {};
+    
+        const statusObject = {
+            lastReported: Date.now(),
+            ip: socket.handshake.headers['x-forwarded-for'] || socket.handshake.address.address,
+            socket: socket.id,
+            priority,
+            ...safeSettings,
+            ...safeStatus
+        };
         statusObject.newSocketIo = true;
-        players.updatePlayerStatus(statusObject)
+        players.updatePlayerStatus(statusObject);
     });
 
-    socket.on('secret_ack', function (err) {
+    socket.on('secret_ack', (err) => {
         players.secretAck(socket.id, err ? false : true);
-    })
+    });
 
-    socket.on('shell_ack', function (response) {
+    socket.on('shell_ack', (response) => {
         players.shellAck(socket.id, response);
     });
 
-    socket.on('media_ack', function (response) {
+    socket.on('media_ack', (response) => {
         players.playlistMediaAck(socket.id, response);
     });
 
-    socket.on('snapshot', function (response) {
-        players.piScreenShot(socket.id,response);
+    socket.on('snapshot', (response) => {
+        players.piScreenShot(socket.id, response);
     });
 
-    socket.on('setplaylist_ack', function(response) {
+    socket.on('setplaylist_ack', (response) => {
         players.playlistChangeAck(socket.id, response);
     });
-    
-    socket.on('upload', function (player, filename, data) {
+
+    socket.on('upload', (player, filename, data) => {
         players.upload(player, filename, data);
     });
 
-    socket.on('disconnect', function (reason) {
-        players.updateDisconnectEvent(socket.id,reason);
-        //console.log("disconnect event: "+socket.id);
+    socket.on('disconnect', (reason) => {
+        players.updateDisconnectEvent(socket.id, reason);
     });
 };
 
-exports.startSIO = function (io) {
+export const startSIO = (io) => {
     io.sockets.on('connection', handleClient);
     iosockets = io.sockets;
-}
+};
 
-exports.startSIOWebsocketOnly = function(io) {
+export const startSIOWebsocketOnly = (io) => {
     io.sockets.on('connection', handleClient);
     iosocketsWebsocketOnly = io.sockets;
-}
+};
 
-exports.emitMessage = function (sid) {
+export const emitMessage = (sid, ...args) => {
     if (iosockets.sockets[sid]) {
-        var args = Array.prototype.slice.call(arguments,1);
-        iosockets.sockets[sid].emit.apply(iosockets.sockets[sid], args);
+        iosockets.sockets[sid].emit(...args);
     }
-}
+};
 
