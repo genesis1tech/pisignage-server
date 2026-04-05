@@ -1,0 +1,35 @@
+[Unit]
+Description=TSV6 piSignage Kiosk (barcode scanning, AWS IoT, overlay)
+After=network-online.target pisignage.service
+Wants=network-online.target
+# Wait for piSignage player to fully render before starting overlay
+After=pisignage.service
+
+[Service]
+Type=simple
+User=%i
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/%i/.Xauthority"
+
+# piSignage server connection
+Environment="PISIGNAGE_SERVER_URL=https://your-domain.com"
+Environment="PISIGNAGE_USER=pi"
+Environment="PISIGNAGE_PASSWORD=pi"
+
+# AWS IoT (inherited from tsv6 config)
+Environment="TSV6_LTE_ENABLED=false"
+Environment="TSV6_CONNECTIVITY_MODE=wifi_only"
+
+# Give piSignage 10 seconds to start before launching overlay
+ExecStartPre=/bin/sleep 10
+
+ExecStart=/usr/bin/python3 -m tsv6_pisignage.kiosk
+WorkingDirectory=/home/%i/pisignage-server/kiosk
+
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target

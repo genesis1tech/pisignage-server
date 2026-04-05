@@ -1,17 +1,26 @@
-version: '3'
+version: '3.8'
 services:
   mongo:
-    image: mongo:4.4
+    image: mongo:5.0
+    restart: unless-stopped
     ports:
-      - 27017:27017
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongodb:/data/db
       - mongodb_config:/data/configdb
+    command: mongod --wiredTigerCacheSizeGB 0.5
+
   pisignage-server:
     build:
       context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
-      - 3000:3000
+      - "127.0.0.1:3000:3000"
+    environment:
+      - NODE_ENV=production
+      - MONGOLAB_URI=mongodb://mongo:27017/pisignage-server-dev
+      - PORT=3000
     volumes:
       - media:/media
       - data:/data

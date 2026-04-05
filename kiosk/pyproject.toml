@@ -1,0 +1,18 @@
+[project]
+name = "tsv6-pisignage"
+version = "1.0.0"
+description = "TSV6 recycling kiosk integration with piSignage digital signage"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.28.0",
+    "Pillow>=9.0.0",
+]
+
+[project.optional-dependencies]
+# TSV6 hardware deps — only needed on the Raspberry Pi
+pi = [
+    "awscrt>=0.16.0",
+    "awsiotsdk>=1.11.0",
+    "pyserial>=3.5",
+    "qrcode>=7.3",
+]
