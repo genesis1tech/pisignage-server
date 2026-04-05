@@ -1,1 +1,6 @@
 node_modules
+.git
+.github
+nginx
+scripts/deploy-hostinger.sh
+*.md

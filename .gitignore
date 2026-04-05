@@ -1,5 +1,7 @@
 .idea
 node_modules
+__pycache__
+*.pyc
 
 public/app/bower_components
 data/sync_folders
