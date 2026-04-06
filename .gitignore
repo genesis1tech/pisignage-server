@@ -2,6 +2,12 @@
 node_modules
 __pycache__
 *.pyc
+.env
+.env.*
+!.env.example
+.venv
+.coverage
+htmlcov/
 
 public/app/bower_components
 data/sync_folders

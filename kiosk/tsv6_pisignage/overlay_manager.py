@@ -59,6 +59,14 @@ class OverlayWindowManager:
         OverlayState.RECYCLE_FAILURE: 5.0,
     }
 
+    FALLBACK_TEXT: dict[str, str] = {
+        "processing": "Verifying...",
+        "no_match": "Cannot Accept",
+        "qr_not_allowed": "QR Not Allowed",
+        "deposit_waiting": "Please Deposit Item",
+        "recycle_failure": "Item Not Detected",
+    }
+
     def __init__(
         self,
         event_images_dir: str = "event_images",
@@ -75,9 +83,9 @@ class OverlayWindowManager:
         self._mute_audio = mute_audio
 
         # Callbacks
-        self.on_state_change: Optional[
-            Callable[[OverlayState, OverlayState], None]
-        ] = None
+        self.on_state_change: Optional[Callable[[OverlayState, OverlayState], None]] = (
+            None
+        )
 
         # Tkinter root and widgets
         self.root: Optional[tk.Tk] = None
@@ -110,6 +118,18 @@ class OverlayWindowManager:
 
         self._image_label = tk.Label(self.root, bg="black", highlightthickness=0)
         self._image_label.place(
+            x=0, y=0, width=self._screen_width, height=self._screen_height
+        )
+
+        self._text_label = tk.Label(
+            self.root,
+            bg="black",
+            fg="white",
+            font=("Helvetica", 36, "bold"),
+            wraplength=self._screen_width - 40,
+            justify="center",
+        )
+        self._text_label.place(
             x=0, y=0, width=self._screen_width, height=self._screen_height
         )
 
@@ -206,9 +226,7 @@ class OverlayWindowManager:
         if self.root:
             self.root.after(
                 0,
-                lambda: self._do_show_product_image(
-                    image_path, product_name, duration
-                ),
+                lambda: self._do_show_product_image(image_path, product_name, duration),
             )
 
     def show_no_match(self) -> None:
@@ -253,6 +271,8 @@ class OverlayWindowManager:
         if self.root:
             self.root.withdraw()
         self._current_photo = None
+        if self._text_label:
+            self._text_label.configure(text="")
         if self._mute_audio:
             self._set_audio_mute(False)
         self._transition(OverlayState.IDLE)
@@ -261,9 +281,7 @@ class OverlayWindowManager:
         """Schedule overlay auto-hide after duration seconds."""
         self._cancel_hide_timer()
         if self.root:
-            self._hide_timer = self.root.after(
-                int(duration * 1000), self._do_hide
-            )
+            self._hide_timer = self.root.after(int(duration * 1000), self._do_hide)
 
     def _cancel_hide_timer(self) -> None:
         if self._hide_timer and self.root:
@@ -271,11 +289,18 @@ class OverlayWindowManager:
             self._hide_timer = None
 
     def _show_cached_image(self, cache_key: str) -> None:
-        """Display a pre-loaded image from cache."""
+        """Display a pre-loaded image from cache, or fall back to text label."""
         photo = self._photo_cache.get(cache_key)
         if photo and self._image_label:
             self._image_label.configure(image=photo)
             self._current_photo = photo
+            if self._text_label:
+                self._text_label.configure(text="")
+                self._image_label.lift()
+        elif self._text_label:
+            fallback = self.FALLBACK_TEXT.get(cache_key, "")
+            self._text_label.configure(text=fallback)
+            self._text_label.lift()
 
     def _do_show_processing(self) -> None:
         self._raise_overlay()
@@ -295,9 +320,7 @@ class OverlayWindowManager:
             return
         try:
             img = Image.open(image_path).convert("RGB")
-            img = img.resize(
-                (self._screen_width, self._screen_height), _LANCZOS
-            )
+            img = img.resize((self._screen_width, self._screen_height), _LANCZOS)
             photo = ImageTk.PhotoImage(img, master=self.root)
             self._pil_refs = [img]  # replace refs with current image only
             self._current_photo = photo
@@ -319,17 +342,13 @@ class OverlayWindowManager:
         self._raise_overlay()
         self._show_cached_image("qr_not_allowed")
         self._transition(OverlayState.QR_NOT_ALLOWED)
-        self._schedule_auto_hide(
-            self.STATE_DURATIONS[OverlayState.QR_NOT_ALLOWED]
-        )
+        self._schedule_auto_hide(self.STATE_DURATIONS[OverlayState.QR_NOT_ALLOWED])
 
     def _do_show_recycle_failure(self) -> None:
         self._raise_overlay()
         self._show_cached_image("recycle_failure")
         self._transition(OverlayState.RECYCLE_FAILURE)
-        self._schedule_auto_hide(
-            self.STATE_DURATIONS[OverlayState.RECYCLE_FAILURE]
-        )
+        self._schedule_auto_hide(self.STATE_DURATIONS[OverlayState.RECYCLE_FAILURE])
 
     # ------------------------------------------------------------------
     # Audio control
@@ -340,9 +359,7 @@ class OverlayWindowManager:
         """Mute/unmute system audio via amixer (non-blocking)."""
         try:
             cmd = ["amixer", "set", "Master", "mute" if mute else "unmute"]
-            subprocess.Popen(
-                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except FileNotFoundError:
             pass  # amixer not available (dev machine)
 

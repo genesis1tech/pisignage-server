@@ -1,6 +1,12 @@
 node_modules
 .git
 .github
+.claude
+.idea
+.env
+.env.*
 nginx
 scripts/deploy-hostinger.sh
+__pycache__
+*.pyc
 *.md
