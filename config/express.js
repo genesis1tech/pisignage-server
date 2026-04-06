@@ -11,73 +11,127 @@ var favicon = require('serve-favicon'),             //express middleware
     logger = require('morgan'),
     methodOverride = require('method-override'),
     bodyParser = require('body-parser'),
-    cookieParser = require('cookie-parser');
+    cookieParser = require('cookie-parser'),
+    helmet = require('helmet'),
+    rateLimit = require('express-rate-limit');
 
 
 
-//CORS middleware  , add more controls for security like site names, timeout etc.
+// CORS middleware — restrict to allowlisted origins
+var allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
+    ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(function(s) { return s.trim(); })
+    : [];
+
 var allowCrossDomain = function (req, res, next) {
-    res.header('Access-Control-Allow-Origin', req.headers.origin);
-    res.header('Access-Control-Allow-Credentials', true);
-    res.header('Vary', "Origin");   //https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
-    res.header('Access-Control-Expose-Headers', 'Content-Length');
-    res.header('Access-Control-Allow-Methods', 'HEAD,GET,PUT,POST,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type,Content-Length,Response-Type, X-Requested-With,origin,accept,Authorization,x-access-token,Last-Modified');
+    var origin = req.headers.origin;
+    if (origin && allowedOrigins.indexOf(origin) !== -1) {
+        res.header('Access-Control-Allow-Origin', origin);
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.header('Vary', 'Origin');
+        res.header('Access-Control-Expose-Headers', 'Content-Length');
+        res.header('Access-Control-Allow-Methods', 'HEAD,GET,PUT,POST,DELETE,OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type,Content-Length,Response-Type,X-Requested-With,origin,accept,Authorization,x-access-token,Last-Modified');
+    }
 
-    if (req.method == 'OPTIONS') {
-        res.sendStatus(200);
+    if (req.method === 'OPTIONS') {
+        if (origin && allowedOrigins.indexOf(origin) !== -1) {
+            res.sendStatus(200);
+        } else {
+            res.sendStatus(403);
+        }
+        return;
     }
-    else {
-        next();
-    }
+    next();
 }
 
-var basicHttpAuth = function(req,res,next) {
+// Settings cache for auth (avoids hitting MongoDB on every request)
+var _settingsCache = null;
+var _settingsCacheTime = 0;
+var SETTINGS_CACHE_TTL = 60000; // 60 seconds
 
-    var auth = req.headers['authorization'];  // auth is in base64(username:password)  so we need to decode the base64
+function getCachedSettings(callback) {
+    var now = Date.now();
+    if (_settingsCache && (now - _settingsCacheTime) < SETTINGS_CACHE_TTL) {
+        return callback(null, _settingsCache);
+    }
+    require('../app/controllers/licenses').getSettingsModel(function(err, settings) {
+        if (!err && settings) {
+            _settingsCache = settings;
+            _settingsCacheTime = now;
+        }
+        callback(err, settings);
+    });
+}
 
-    if(!auth) {     // No Authorization header was passed in so it's the first time the browser hit us
+var basicHttpAuth = function(req, res, next) {
+    // Bypass auth for health check endpoint
+    if (req.path === '/api/health') {
+        return next();
+    }
 
-        // Sending a 401 will require authentication, we need to send the 'WWW-Authenticate' to tell them the sort of authentication to use
+    var auth = req.headers['authorization'];
+
+    if (!auth) {
         res.statusCode = 401;
         res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
         res.end('<html><body>Authentication required to access this path</body></html>');
-
     } else {
-
-        var tmp = auth.split(' ');   // Split on a space, the original auth looks like  "Basic Y2hhcmxlczoxMjM0NQ==" and we need the 2nd part
-
-        var buf =  Buffer.from(tmp[1], 'base64'); // create a buffer and tell it the data coming in is base64
-        var plain_auth = buf.toString();        // read it back out as a string
-
-        //console.log("Decoded Authorization ", plain_auth);
-
-        // At this point plain_auth = "username:password"
-
-        var creds = plain_auth.split(':');      // split on a ':'
+        var tmp = auth.split(' ');
+        var buf = Buffer.from(tmp[1], 'base64');
+        var plain_auth = buf.toString();
+        var creds = plain_auth.split(':');
         var username = creds[0];
         var password = creds[1];
 
-        var pathComponents = req.path.split('/');
-        //console.log(pathComponents);
+        // Environment variable override takes precedence over DB settings
+        var envUser = process.env.AUTH_USER;
+        var envPassword = process.env.AUTH_PASSWORD;
 
-        require('../app/controllers/licenses').getSettingsModel(function(err,settings){
-            if( (!settings.authCredentials) ||
-                (!settings.authCredentials.user || username == settings.authCredentials.user) &&
-                (!settings.authCredentials.password || password == settings.authCredentials.password)) {
-                //console.log("http request authorized for download for "+req.path);
+        if (envUser && envPassword) {
+            if (username === envUser && password === envPassword) {
+                return next();
+            }
+            console.log("http request rejected for " + req.path);
+            res.statusCode = 401;
+            res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
+            return res.end('<html><body>Authentication required to access this path</body></html>');
+        }
+
+        getCachedSettings(function(err, settings) {
+            if (!settings || !settings.authCredentials) {
+                return next();
+            }
+
+            var validUser = !settings.authCredentials.user || username === settings.authCredentials.user;
+            var validPass = !settings.authCredentials.password || password === settings.authCredentials.password;
+
+            if (validUser && validPass) {
                 next();
             } else {
-                console.log("http request rejected for download for "+req.path);
-                res.statusCode = 401;   // or alternatively just reject them altogether with a 403 Forbidden
+                console.log("http request rejected for " + req.path);
+                res.statusCode = 401;
                 res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
                 res.end('<html><body>Authentication required to access this path</body></html>');
             }
-        })
+        });
     }
 }
 
 module.exports = function (app) {
+
+    // Security headers
+    app.use(helmet({
+        contentSecurityPolicy: false // piSignage dashboard uses inline scripts
+    }));
+
+    // Rate limiting on API routes
+    app.use('/api/', rateLimit({
+        windowMs: 15 * 60 * 1000, // 15 minutes
+        max: 500, // limit each IP to 500 requests per window
+        standardHeaders: true,
+        legacyHeaders: false,
+        skip: function(req) { return req.path === '/health'; }
+    }));
 
     //CORS related  http://stackoverflow.com/questions/7067966/how-to-allow-cors-in-express-nodejs
     app.use(allowCrossDomain);
