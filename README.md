@@ -1,167 +1,143 @@
 # pisignage-server
 
-Server code to manage piSignage players in a LAN or Private Network or to setup your own server!
+Fork of [colloqi/pisignage-server](https://github.com/colloqi/pisignage-server) with TSV6 recycling kiosk integration, Docker production config, security hardening, and operational tooling.
 
-Run the `npm install` command after `git pull` and before starting the server
+Manages piSignage digital signage players over LAN/private networks. Node.js/Express backend, MongoDB, Pug templates, Socket.IO real-time, AngularJS frontend.
 
-## Docker image available - beta
-- Install docker from https://docs.docker.com/get-docker/
-- Install git if needed & issue `git clone https://github.com/colloqi/pisignage-server`
+## Architecture
 
-   OR
+```
+server.js              # Entry point — Express, MongoDB, Socket.IO/WebSocket servers
+config/
+  config.js            # Merges env/all.js + env/{NODE_ENV}.js
+  express.js           # Middleware (helmet, rate-limit, CORS, Basic Auth)
+  routes.js            # API routes (/api/files, /api/playlists, /api/groups, etc.)
+app/
+  models/              # Mongoose schemas (assets, group, label, player, settings)
+  controllers/         # Route handlers + socket controllers + scheduler
+  others/              # file-util, process-file, restware, system-check
+  views/               # Pug templates
+public/                # AngularJS frontend (static, no build step)
+kiosk/                 # Python TSV6 kiosk integration (separate deploy)
+scripts/               # Deploy, MongoDB backup, OS install scripts
+nginx/                 # Reverse proxy config for production
+```
 
-   just get the file https://raw.githubusercontent.com/colloqi/pisignage-server/master/docker-compose.yml
+## Quick Start (Docker)
 
-- Change to your pisignage working directory (if you're not already there, eg. C:\Users\<USERNAME>\pisignage-server) and run `docker compose up -d`
-- Use the url http://localhost:3000  to launch web application
-- Default credentials: Username:Password = `pi:pi`
-- To generate your own Docker image, please goto docker-build branch and modify Dockerfile. Also use `docker-compose.prod.yml`
+1. Clone and configure:
 
+```bash
+git clone https://github.com/genesis1tech/pisignage-server.git
+cd pisignage-server
+cp .env.example .env
+# Edit .env — set SESSION_SECRET, AUTH_USER, AUTH_PASSWORD at minimum
+```
 
-#### Changes to Docker application from server code (it is built in docker-build branch and you could watch the different as well Dockerfile there)
-1. media and data dir are docker volumes (instead of ../media and ./data)
-2. in config/end/production.js: https is false and port is 3000, db is changed to pisignage-server-dev for compatibility and mongo network is changed from 127.0.0.1 to mongo
+2. Deploy:
 
-## Recommended Server configuration
-- Intel CPU based VM or server
-- 2GB minimum memory
-- 30GB+ SSD or hard disk
-- Linux based OS
+```bash
+# On a fresh VPS:
+bash scripts/deploy-hostinger.sh
 
-## Upgrading to latest from existing versions**
+# Or manually:
+docker compose -f docker-compose.prod.yml up -d --build
+```
 
-1. Change to pisignage-server directory where you have pulled the code last time
-2. Issue the command `git pull origin master`
-   ***IMPORTANT: If you are updating from before 24 Nov 2016, after git pull, please change the uri variable in config/env/development.js to 'mongodb://localhost/pisignage-dev' to retain the old data***
-3. Apply your code changes if any
-4. rm package-lock.json
-5. rm -rf node_modules (entire directory and its contents)
-6. Do "npm install"
-7. Start the pisignage-server and go to url localhost:3000
-8. Enter the username of yours at pisignage.com (not the email ID) (or change under settings, otherwise player license will not be enabled)
-9. Default authentication credentials for player webUI has been changed to pi:pi
-10. New settings tab has been added for settings instead of config/env/all.js file
-11. New player software upgrades are automatically pulled to the server and you can upgrade from the local server itself
-12. Upload new licenses bought to the local server so that they are automatically installed in the pi
-13. Authentication has been added to the server UI which can be changed under settings (default pi:pi)
+3. Access at `http://your-server:3000` (or via nginx on port 80)
 
-## Getting Started
+## Quick Start (Development)
 
+```bash
+# Prerequisites: Node.js 18+, MongoDB 5.0+, ffmpeg, imagemagick
+npm install
+mkdir -p ../media/_thumbnails
+npm start    # starts on http://localhost:3000
+```
 
-    Note: Instructions may change, please refer to the respective package/OS websites for the latest,
-            Write to us at support@pisignage.com for help.
+Default credentials: `pi:pi` (change in Settings or via `AUTH_USER`/`AUTH_PASSWORD` env vars).
 
+## Environment Variables
 
-1. Install mongodb - open-source document database
+| Variable | Default | Purpose |
+|---|---|---|
+| `NODE_ENV` | `development` | Config file selector |
+| `MONGOLAB_URI` | `mongodb://127.0.0.1:27017/pisignage-server-dev` | MongoDB connection |
+| `PORT` | `3000` | Server port |
+| `SESSION_SECRET` | (random, changes per restart) | Cookie signing — **set this** |
+| `AUTH_USER` / `AUTH_PASSWORD` | (none — uses DB, initially `pi:pi`) | HTTP Basic Auth override |
+| `CORS_ALLOWED_ORIGINS` | (empty — no CORS) | Comma-separated allowed origins |
+| `DOMAIN` | (none) | Domain for SSL/certbot |
 
-    Refer mongodb install guides to install mongodb.
+See `.env.example` for full reference.
 
-   - Windows: https://docs.mongodb.com/manual/tutorial/install-mongodb-on-windows/
-   - Linux: https://docs.mongodb.com/manual/administration/install-on-linux/
-   - Mac OS X: https://docs.mongodb.com/manual/tutorial/install-mongodb-on-os-x/
+## Production Deployment
 
-2. Install node.js and npm - open source server framework
+Deployed on a Hostinger VPS using Docker + nginx reverse proxy.
 
-   https://nodejs.org/en/download/package-manager/
+### SSL Setup
 
-3. Install ffmpeg - video converter
+1. Point DNS to your VPS IP
+2. Update `server_name` in `nginx/pisignage.conf`
+3. Run: `sudo certbot --nginx -d your-domain.com`
+4. Uncomment the HTTPS block in `nginx/pisignage.conf`
 
-   https://www.ffmpeg.org/download.html
+### MongoDB Backups
 
-4. Install imagemagick - tool for image edit, conversion
+Daily backups at 2 AM (set up by deploy script):
 
-    https://www.imagemagick.org/script/download.php
+```bash
+# Manual backup:
+bash scripts/backup-mongo.sh /path/to/project
+```
 
-5. Install Git -  distributed version control system
+Retains last 7 daily backups in `/var/pisignage/backups/`.
 
-    https://git-scm.com/downloads
+### Health Check
 
-5. Clone this repository and run the following commands
+```bash
+curl http://localhost:3000/api/health
+# Returns: {"status":"ok","mongo":"connected","uptime":12345}
+```
 
-    - git clone https://github.com/colloqi/pisignage-server
-    - mkdir media
-    - mkdir media/_thumbnails
-    - cd pisignage-server
-    - npm install
+## Security Notes
 
-6. Currently network port is configured as 3000 in local server. Modify in the file `config/env/development.js` for the port
+- **Change default credentials** — Set `AUTH_USER`/`AUTH_PASSWORD` in `.env`
+- **Set `SESSION_SECRET`** — Otherwise sessions invalidate on every restart
+- **Enable SSL** — HTTP Basic Auth sends credentials in plaintext; SSL is mandatory for production
+- **CORS** — Only origins in `CORS_ALLOWED_ORIGINS` are allowed cross-origin access
+- **Rate limiting** — 500 requests per 15 minutes on `/api/` routes
+- **Security headers** — helmet middleware (X-Content-Type-Options, X-Frame-Options, HSTS)
+- **MongoDB auth** — Set `MONGO_INITDB_ROOT_USERNAME`/`MONGO_INITDB_ROOT_PASSWORD` for new deployments
 
-7. Run node server with `node server.js`
+## TSV6 Kiosk Integration
 
-8. Open Chrome browser and check at [http://localhost:3000](http://localhost:3000) **OR** `http://[your-ip]:3000` (ex: 192.168.1.30:3000, 10.50.16.110:3000)
+See [kiosk/README.md](kiosk/README.md) for the Python kiosk package that integrates piSignage with TSV6 recycling kiosk hardware.
 
-9. Do the following configuration before you start
-    - Under settings, configure the username to be same as that of your signin username at pisignage.com (it is **not** your email id)
-    - Download the license files either from email or from pisignage.com, upload them to your local server under settings
-    - You can upgrade your players directly from your local server
-    - authentication is pi & pi, you can change this under settings
+## Testing
 
-**NOTE:** Please make sure **mongod** process is running and **/data/db** ownership is changed to regular user. If not use, ``` sudo chown -R your-username:user-group /data```
-### Configure Pi
+```bash
+# Python kiosk tests (117 tests, 96% coverage)
+cd kiosk
+pip install -e ".[dev]"
+pytest --cov
 
-    In player settings, PORT number should be part of server name for e.g. 192.168.1.12:3000
+# Python lint
+ruff check kiosk/ tests/
+```
 
-1. Download the pisignage player software and prepare SD card as per [instructions](https://github.com/colloqi/piSignage#method-1-download-image-and-prepare-the-sd-card)
-
-2. After player boots, configure admin and media server to your local address and port using one of the below methods
-
-   a. Using the webUI of the player at http://[player IP]:8000/settings
-
-   b. Connect Keyboard and press Ctrl-N or F6
-      * Change config and media server to `http://[your server ip]:port` (ex: 192.168.1.30:3000, 10.50.16.110:3000)
-      * Open terminal `ctrl+Alt+ t` and delete any existing _config.json and _settings.json file from `/home/pi/piSignagePro/config` directory
-
-   c. Connect through ssh
-      * Edit `/home/pi/piSignagePro/package.json` for admin and media server configuration
-      * delete any existing _config.json and _settings.json file from `/home/pi/piSignagePro/config` directory
+No test suite exists for the Node.js server.
 
 ## Features
 
-1. Player management
-    - Auto discovery of players in a network
-    - Monitor Players
+- Player management — auto-discovery, monitoring
+- Group management — display settings, playlist assignment
+- Asset management — upload, video conversion (ffmpeg), thumbnails
+- Playlist management — drag-to-reorder, layouts, ticker, ad scheduling
+- Four real-time transports — Socket.IO (3 variants) + raw WebSocket
 
-2. Group management - create groups and assign players to groups
-    - Display settings - 1080p/720p and landscape or portrait mode
-    - Deploy default playlist, scheduled playlists and advt playlist
-    - Assign Players to Groups
+## System Requirements
 
-3. Assets Management
-    - Upload assets (video,mp3,html/zip,images, links, google calendar feed)
-    - Videos are automatically converted to mp4 using ffmpeg
-    - Thumbnail creation for videos and video metadata extraction to store in data base
-    - Add labels to manage assets
-    - View Details of files
-    - rename or delete files
-    - view assets locally
-    - auto label creation for uploaded time (in coming releases)
-
-4. Playlist management
-    - Create, rename or delete playlists
-    - Assign assets & drag to change order
-    - assign duration for non-video assets
-    - select a layout to show (1,2a,2b,3a,3b,4,4b,2ab)
-    - Enable ticker & set Ticker text
-    - Make it ad playlist with configurable interval timer
-
-
-### Points to remember
-
-1. angularjs-dropdown-multiselect is taken directly from
-    https://github.com/dotansimha/angularjs-dropdown-multiselect/pull/23/files instead of bower (for close-on-select to work)
-
-2. Requires following programs to work
-    - ffmpeg >= 0.9  (in certain OS, these may have to be compiled since the package does not exist,
-      please see the issue #9)
-    - ffprobe associated with ffmpeg needed to convert videos
-    - imagemagick  creates thumbnails
-
-3. Two directories are created by the program ../media and ../media/_thumbnails. If these directories are not created server won't work as expected (for e.g. thumbnails won't be created if _thumbnails directory does not exit). In that case create those directories manually.
-
-
-4. You can also manage players using Browser(http://playerip:8000) or downloading Chrome app
-
-5. Make sure installation under settings page is same as your username (not email) at pisignage.com
-
-
-***Please raise an issue for problems or send us email at support@pisignage.com***
+- 2GB RAM minimum
+- 30GB+ storage (video assets)
+- Linux (Docker) or macOS (development)

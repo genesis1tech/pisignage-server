@@ -17,6 +17,7 @@ Usage:
 """
 
 import logging
+import os
 import threading
 import time
 import tkinter as tk
@@ -33,6 +34,13 @@ try:
     IMAGE_MANAGER_AVAILABLE = True
 except ImportError:
     IMAGE_MANAGER_AVAILABLE = False
+
+try:
+    from systemd.daemon import notify as sd_notify
+
+    SYSTEMD_AVAILABLE = True
+except ImportError:
+    SYSTEMD_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -98,26 +106,35 @@ class PiSignageKiosk:
         """
         self.root = self.overlay.setup()
 
-        # Discover piSignage player in background
         if self.pisignage:
-            threading.Thread(
-                target=self._discover_pisignage_player,
-                daemon=True,
-            ).start()
+            time.sleep(10)
+            self.pisignage.discover_player_async()
+
+        if SYSTEMD_AVAILABLE:
+            try:
+                sd_notify("READY=1")
+            except Exception:
+                logger.debug("sd_notify READY failed")
+            self._start_watchdog_heartbeat()
 
         logger.info("PiSignageKiosk setup complete")
 
-    def _discover_pisignage_player(self) -> None:
-        """Background task to discover this Pi's player on the piSignage server."""
-        time.sleep(10)
-        if self.pisignage:
-            player_id = self.pisignage.discover_player()
-            if player_id:
-                logger.info("piSignage player discovered: %s", player_id)
-            else:
-                logger.warning(
-                    "piSignage player not found -- remote control disabled"
-                )
+    def _start_watchdog_heartbeat(self) -> None:
+        """Send WATCHDOG=1 periodically to keep systemd happy."""
+
+        def _heartbeat() -> None:
+            watchdog_usec = os.getenv("WATCHDOG_USEC")
+            if not watchdog_usec:
+                return
+            interval = int(watchdog_usec) / 1_000_000 / 2
+            while True:
+                time.sleep(interval)
+                try:
+                    sd_notify("WATCHDOG=1")
+                except Exception:
+                    logger.debug("sd_notify WATCHDOG failed")
+
+        threading.Thread(target=_heartbeat, daemon=True).start()
 
     # ------------------------------------------------------------------
     # Display callbacks -- same interface as EnhancedVideoPlayer
@@ -177,9 +194,7 @@ class PiSignageKiosk:
         """Show recycle failure overlay. Called when ToF sensor did not detect item."""
         self.overlay.show_recycle_failure()
 
-    def start_nfc_for_transaction(
-        self, nfc_url: str, transaction_id: str = ""
-    ) -> None:
+    def start_nfc_for_transaction(self, nfc_url: str, transaction_id: str = "") -> None:
         """
         Start NFC URL broadcasting for a transaction.
         Delegates to barcode_scanner's NFC emulator if available.

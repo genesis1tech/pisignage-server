@@ -14,6 +14,7 @@ since the local tkinter overlay handles all latency-sensitive display.
 
 import logging
 import threading
+import time
 from typing import Any, Optional
 
 import requests
@@ -40,11 +41,13 @@ class PiSignageClient:
         timeout: float = 5.0,
     ) -> None:
         self._base_url = server_url.rstrip("/")
-        self._auth = (username, password)
         self._timeout = timeout
         self._player_id: Optional[str] = None
         self._player_name: Optional[str] = None
         self._discovery_lock = threading.Lock()
+        self._session = requests.Session()
+        self._session.auth = (username, password)
+        self._session.timeout = timeout
 
     # ------------------------------------------------------------------
     # Player discovery
@@ -80,10 +83,8 @@ class PiSignageClient:
                 return None
 
             try:
-                resp = requests.get(
+                resp = self._session.get(
                     f"{self._base_url}/api/players",
-                    auth=self._auth,
-                    timeout=self._timeout,
                 )
                 resp.raise_for_status()
                 data = resp.json()
@@ -108,6 +109,32 @@ class PiSignageClient:
             except requests.RequestException as e:
                 logger.warning("piSignage player discovery failed: %s", e)
                 return None
+
+    def discover_player_async(
+        self, max_retries: int = 5, base_delay: float = 5.0
+    ) -> None:
+        """
+        Discover player in a background thread with exponential backoff.
+        Non-blocking — returns immediately, discovery continues until success or max_retries.
+        """
+
+        def _retry_loop() -> None:
+            for attempt in range(max_retries):
+                result = self.discover_player()
+                if result:
+                    return
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2**attempt)
+                    logger.info(
+                        "Player discovery retry %d/%d in %.0fs",
+                        attempt + 1,
+                        max_retries,
+                        delay,
+                    )
+                    time.sleep(delay)
+            logger.warning("Player discovery failed after %d attempts", max_retries)
+
+        threading.Thread(target=_retry_loop, daemon=True).start()
 
     @property
     def player_id(self) -> Optional[str]:
@@ -142,17 +169,13 @@ class PiSignageClient:
 
         def _do() -> None:
             try:
-                resp = requests.post(
+                resp = self._session.post(
                     f"{self._base_url}/api/setplaylist/{player_id}/{playlist_name}",
-                    auth=self._auth,
-                    timeout=self._timeout,
                 )
                 if resp.ok:
                     logger.info("Playlist switched to: %s", playlist_name)
                 else:
-                    logger.warning(
-                        "Playlist switch failed: %s", resp.status_code
-                    )
+                    logger.warning("Playlist switch failed: %s", resp.status_code)
             except requests.RequestException as e:
                 logger.warning("Playlist switch error: %s", e)
 
@@ -166,10 +189,8 @@ class PiSignageClient:
 
         def _do() -> None:
             try:
-                resp = requests.post(
+                resp = self._session.post(
                     f"{self._base_url}/api/playlistmedia/{player_id}/{action}",
-                    auth=self._auth,
-                    timeout=self._timeout,
                 )
                 if resp.ok:
                     logger.info("piSignage action: %s", action)
@@ -195,10 +216,8 @@ class PiSignageClient:
             return None
 
         try:
-            resp = requests.get(
+            resp = self._session.get(
                 f"{self._base_url}/api/players/{player_id}",
-                auth=self._auth,
-                timeout=self._timeout,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -214,10 +233,8 @@ class PiSignageClient:
     def list_playlists(self) -> list[dict[str, Any]]:
         """Get all playlists from the server."""
         try:
-            resp = requests.get(
+            resp = self._session.get(
                 f"{self._base_url}/api/playlists",
-                auth=self._auth,
-                timeout=self._timeout,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -229,10 +246,8 @@ class PiSignageClient:
     def list_assets(self) -> list[dict[str, Any]]:
         """Get all assets from the server."""
         try:
-            resp = requests.get(
+            resp = self._session.get(
                 f"{self._base_url}/api/files",
-                auth=self._auth,
-                timeout=self._timeout,
             )
             resp.raise_for_status()
             data = resp.json()

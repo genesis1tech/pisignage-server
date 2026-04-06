@@ -16,3 +16,19 @@ pi = [
     "pyserial>=3.5",
     "qrcode>=7.3",
 ]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--tb=short -q"
+
+[tool.coverage.run]
+source = ["tsv6_pisignage"]
+omit = ["tsv6_pisignage/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 70
