@@ -1,6 +1,7 @@
 'use strict';
 
 var express = require('express'),
+    mongoose = require('mongoose'),
     router = express.Router();
 
 var multer = require('multer'),
@@ -19,6 +20,18 @@ var assets = require('../app/controllers/assets'),
 /**
  * Application routes
  */
+
+// Health check (no auth required — bypassed in express.js basicHttpAuth)
+router.get('/api/health', function(req, res) {
+    var mongoState = mongoose.connection.readyState;
+    var status = mongoState === 1 ? 'ok' : 'degraded';
+    var httpStatus = mongoState === 1 ? 200 : 503;
+    res.status(httpStatus).json({
+        status: status,
+        mongo: mongoState === 1 ? 'connected' : 'disconnected',
+        uptime: Math.floor(process.uptime())
+    });
+});
 
 //Server Routes
 // if(config.gCalendar.CLIENT_ID && config.gCalendar.CLIENT_SECRET){
