@@ -1,0 +1,77 @@
+
+<div class="modal-header">
+  <h4><span class="text-info">Overlay Control</span>
+    <span class="pull-right">
+      <small class="text-muted">{{overlayCtrl.player.name || overlayCtrl.player.cpuSerialNumber}}</small>
+    </span>
+  </h4>
+</div>
+<div class="modal-body">
+  <div class="row">
+    <div class="col-sm-12">
+      <div class="alert" ng-class="{'alert-success': overlayCtrl.state=='idle', 'alert-info': overlayCtrl.state=='processing', 'alert-warning': overlayCtrl.state!='idle' && overlayCtrl.state!='processing'}">
+        <strong>Current State:</strong> {{overlayCtrl.state || 'idle'}}
+        <span class="pull-right" ng-if="overlayCtrl.lastUpdated">
+          <small>Updated: {{overlayCtrl.lastUpdated | date: "MMM dd, hh:mm:ss a"}}</small>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-sm-12">
+      <p class="text-muted"><small>Trigger overlay states for testing. On production, these are triggered by barcode scans via the hardware bridge.</small></p>
+    </div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div class="col-sm-4">
+      <button class="btn btn-info btn-block" ng-click="triggerOverlay('processing')" ng-disabled="overlayCtrl.busy">
+        <i class="fa fa-spinner"></i> Processing
+      </button>
+    </div>
+    <div class="col-sm-4">
+      <button class="btn btn-warning btn-block" ng-click="triggerOverlay('deposit_waiting')" ng-disabled="overlayCtrl.busy">
+        <i class="fa fa-cube"></i> Deposit Wait
+      </button>
+    </div>
+    <div class="col-sm-4">
+      <button class="btn btn-success btn-block" ng-click="triggerOverlay('product_display')" ng-disabled="overlayCtrl.busy">
+        <i class="fa fa-image"></i> Product Display
+      </button>
+    </div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div class="col-sm-4">
+      <button class="btn btn-danger btn-block" ng-click="triggerOverlay('no_match')" ng-disabled="overlayCtrl.busy">
+        <i class="fa fa-times"></i> No Match
+      </button>
+    </div>
+    <div class="col-sm-4">
+      <button class="btn btn-danger btn-block" ng-click="triggerOverlay('recycle_failure')" ng-disabled="overlayCtrl.busy">
+        <i class="fa fa-exclamation-triangle"></i> Recycle Fail
+      </button>
+    </div>
+    <div class="col-sm-4">
+      <button class="btn btn-default btn-block" ng-click="triggerOverlay('idle')" ng-disabled="overlayCtrl.busy">
+        <i class="fa fa-eye-slash"></i> Hide (Idle)
+      </button>
+    </div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div class="col-sm-4">
+      <button class="btn btn-warning btn-block" ng-click="triggerOverlay('qr_not_allowed')" ng-disabled="overlayCtrl.busy">
+        <i class="fa fa-qrcode"></i> QR Not Allowed
+      </button>
+    </div>
+  </div>
+  <div class="row" style="margin-top:15px" ng-if="overlayCtrl.message">
+    <div class="col-sm-12">
+      <div class="alert alert-info">
+        <small>{{overlayCtrl.message}}</small>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-footer">
+  <button class="btn btn-default" ng-click="refreshOverlayState()"><i class="fa fa-refresh"></i> Refresh</button>
+  <button class="btn btn-warning" ng-click="modal.dismiss()">Dismiss</button>
+</div>

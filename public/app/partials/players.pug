@@ -52,6 +52,8 @@
                         small.text-primary  {{ item.group.name.length>12?item.group.name.slice(0,10)+'..':item.group.name }}
                     button.btn.btn-default.btn-xs.pull-right(ng-click="loadPlayerDetails(item)")
                         i.fa.fa-cog.fa-lg.text-warning
+                    button.btn.btn-default.btn-xs.pull-right(ng-click="overlayControl(item)", style="margin-right:4px", title="Overlay Control")
+                        i.fa.fa-television.fa-lg.text-info
 
             .row
                 .col-sm-4
@@ -62,6 +64,8 @@
                         small.text-info.pl-5(title="ip address") ip: {{item.myIpAddress}}
                 .col-sm-3
                     h6.text-primary.truncate: small last seen:&nbsp;{{item.lastReported?(item.lastReported | timeAgo):"never"}}
+                    h6.text-info.truncate(ng-if="item.overlayState && item.overlayState!='idle'"): small
+                        i.fa.fa-television &nbsp;overlay: {{item.overlayState}}
                 .col-sm-3
                     h6(ng-if="!item.isConnected || !item.syncInProgress").text-primary.truncate: small last sync:&nbsp;{{item.lastUpload?(item.lastUpload | timeAgo):"never"}}
                     h6(ng-if="item.isConnected && item.syncInProgress").text-primary

@@ -879,6 +879,61 @@ angular.module('piGroups.controllers', [])
                 $scope.msg.cmd = commands.next();
         }
 
+        // -- Overlay Control --
+        $scope.overlayCtrl = {
+            player: null,
+            state: 'idle',
+            lastUpdated: null,
+            busy: false,
+            message: ''
+        };
+
+        $scope.overlayControl = function(player) {
+            $scope.overlayCtrl.player = player;
+            $scope.overlayCtrl.busy = false;
+            $scope.overlayCtrl.message = '';
+            $scope.modal = $modal.open({
+                templateUrl: '/app/templates/overlay-popup.html',
+                scope: $scope
+            });
+            $scope.refreshOverlayState();
+        };
+
+        $scope.refreshOverlayState = function() {
+            if (!$scope.overlayCtrl.player) return;
+            $http.get(piUrls.overlay + $scope.overlayCtrl.player._id)
+                .success(function(data) {
+                    if (data.success) {
+                        $scope.overlayCtrl.state = data.data.state;
+                        $scope.overlayCtrl.lastUpdated = data.data.lastUpdated;
+                    }
+                });
+        };
+
+        $scope.triggerOverlay = function(state) {
+            if (!$scope.overlayCtrl.player) return;
+            $scope.overlayCtrl.busy = true;
+            $scope.overlayCtrl.message = 'Sending ' + state + '...';
+            $http.post(piUrls.overlay + $scope.overlayCtrl.player._id, {
+                state: state,
+                data: state === 'product_display' ? {productName: 'Test Product', productImage: '/app/img/piSignageLogo.png'} : {}
+            })
+                .success(function(data) {
+                    $scope.overlayCtrl.busy = false;
+                    if (data.success) {
+                        $scope.overlayCtrl.state = data.data.state;
+                        $scope.overlayCtrl.lastUpdated = data.data.lastUpdated;
+                        $scope.overlayCtrl.message = 'State set to: ' + state;
+                    } else {
+                        $scope.overlayCtrl.message = 'Error: ' + data.stat_message;
+                    }
+                })
+                .error(function() {
+                    $scope.overlayCtrl.busy = false;
+                    $scope.overlayCtrl.message = 'Failed to send overlay command';
+                });
+        };
+
         $scope.gotoPlaylist = function(plname) {
             var pl = assetLoader.playlist.playlists.find(function(item){
                 return (item.name == plname)

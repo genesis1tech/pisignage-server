@@ -1,0 +1,223 @@
+/**
+ * piSignage Overlay Styles
+ *
+ * Fullscreen overlay that sits above piSignage content.
+ * Hidden by default, shown on scan events.
+ * Designed for kiosk displays (800x480 typical, but scales to any resolution).
+ */
+
+/* Reset for custom layout */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    cursor: none; /* kiosk mode */
+}
+
+/* ----------------------------------------------------------------
+   Overlay Container
+   ---------------------------------------------------------------- */
+
+.overlay-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.overlay-container.overlay-visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* ----------------------------------------------------------------
+   Overlay Content
+   ---------------------------------------------------------------- */
+
+.overlay-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* State panels - hidden by default */
+.overlay-state {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 40px;
+    text-align: center;
+}
+
+/* ----------------------------------------------------------------
+   Overlay Icons & Messages
+   ---------------------------------------------------------------- */
+
+.overlay-icon {
+    font-size: 96px;
+    margin-bottom: 24px;
+    line-height: 1;
+}
+
+.overlay-icon-error {
+    color: #e74c3c;
+}
+
+.overlay-icon-warning {
+    color: #f39c12;
+}
+
+.overlay-message {
+    font-size: 36px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 12px;
+    line-height: 1.3;
+}
+
+.overlay-submessage {
+    font-size: 22px;
+    color: #aaa;
+    line-height: 1.4;
+}
+
+/* ----------------------------------------------------------------
+   Processing Spinner
+   ---------------------------------------------------------------- */
+
+.overlay-spinner {
+    width: 80px;
+    height: 80px;
+    border: 6px solid rgba(255, 255, 255, 0.15);
+    border-top: 6px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 32px;
+}
+
+@keyframes spin {
+    0%   { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ----------------------------------------------------------------
+   Product Display
+   ---------------------------------------------------------------- */
+
+.overlay-product-image {
+    max-width: 70%;
+    max-height: 65%;
+    object-fit: contain;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.overlay-product-name {
+    font-size: 28px;
+    font-weight: 600;
+    color: #fff;
+    text-align: center;
+    max-width: 80%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ----------------------------------------------------------------
+   Connection Status Indicator
+   ---------------------------------------------------------------- */
+
+.overlay-status {
+    position: fixed;
+    bottom: 8px;
+    right: 8px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #555;
+    z-index: 1001;
+    transition: background 0.3s ease;
+}
+
+.overlay-status-connected {
+    background: #2ecc71;
+}
+
+.overlay-status-disconnected {
+    background: #e74c3c;
+}
+
+.overlay-status-error {
+    background: #f39c12;
+}
+
+/* ----------------------------------------------------------------
+   Responsive adjustments for smaller screens (e.g. 800x480)
+   ---------------------------------------------------------------- */
+
+@media (max-height: 600px) {
+    .overlay-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+    }
+
+    .overlay-message {
+        font-size: 28px;
+        margin-bottom: 8px;
+    }
+
+    .overlay-submessage {
+        font-size: 18px;
+    }
+
+    .overlay-spinner {
+        width: 60px;
+        height: 60px;
+        margin-bottom: 20px;
+    }
+
+    .overlay-product-image {
+        max-height: 55%;
+    }
+
+    .overlay-product-name {
+        font-size: 22px;
+    }
+
+    .overlay-state {
+        padding: 20px;
+    }
+}
+
+/* ----------------------------------------------------------------
+   Landscape/Portrait orientation
+   ---------------------------------------------------------------- */
+
+@media (orientation: portrait) {
+    .overlay-product-image {
+        max-width: 85%;
+        max-height: 50%;
+    }
+}

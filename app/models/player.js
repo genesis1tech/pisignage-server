@@ -45,7 +45,14 @@ var PlayerSchema = new Schema({
     wifiMac:                String,
     cecTvStatus:            {type: Boolean, default : true},
     piTemperature:          {type:String},
-    uptime:                 {type:String}
+    uptime:                 {type:String},
+
+    // Custom overlay state for kiosk scan actions
+    overlayState:           {type: String, default: 'idle',
+                                enum: ['idle','processing','deposit_waiting','product_display',
+                                       'recycle_failure','no_match','qr_not_allowed']},
+    overlayData:            {type: Schema.Types.Mixed, default: {}},
+    overlayLastUpdated:     {type: Date}
 }, {
     usePushEach: true
 })

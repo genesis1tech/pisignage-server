@@ -34,7 +34,8 @@ angular.module('piConfig', [])
             pishell:         base + 'api/pishell/',
             snapshot:        base + 'api/snapshot/',
             pitv:            base + 'api/pitv/',
-            swupdate:        base + 'api/swupdate/'
+            swupdate:        base + 'api/swupdate/',
+            overlay:         base + 'api/overlay/'
 
         }
     })())
