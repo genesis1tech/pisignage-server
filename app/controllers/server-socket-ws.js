@@ -4,6 +4,7 @@
 //session_store = sessionConfig.store;
 
 var players = require('./players');
+var overlay = require('./overlay');
 var _ = require('lodash');
 
 var iosockets = null  //holds all the clients io.sockets
@@ -63,6 +64,10 @@ var handleClient = function(socket, request) {
 
             case 'snapshot':
                 players.piScreenShot(socket.id, messageArguments[1]);          //response
+                break
+
+            case 'overlay_state':
+                overlay.handleOverlayStateReport(socket.id, messageArguments[1], messageArguments[2]);
                 break
 
             case 'upload':

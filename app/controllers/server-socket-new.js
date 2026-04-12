@@ -4,6 +4,7 @@ var iosockets = null;     //holds all the clients io.sockets
 var iosocketsWebsocketOnly = null;     //holds all the clients io.sockets
 
 var players = require('./players'),
+    overlay = require('./overlay'),
     _ = require('lodash');
 
 var handleClient = function (socket) {
@@ -44,6 +45,10 @@ var handleClient = function (socket) {
         players.playlistChangeAck(socket.id, response);
     });
     
+    socket.on('overlay_state', function (state, data) {
+        overlay.handleOverlayStateReport(socket.id, state, data);
+    });
+
     socket.on('upload', function (player, filename, data) {
         players.upload(player, filename, data);
     });

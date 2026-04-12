@@ -13,6 +13,7 @@ var assets = require('../app/controllers/assets'),
     groups = require('../app/controllers/groups'),
     labels = require('../app/controllers/labels'),
     rssFeed = require('../app/controllers/rss-feed'),
+    overlay = require('../app/controllers/overlay'),
     licenses  = require('../app/controllers/licenses');
     //gcalAuthorize = require('../app/controllers/gcal-authorize');
 
@@ -68,6 +69,11 @@ router.post('/api/pitv/:playerid',players.tvPower);
 
 router.post('/api/playlistmedia/:playerid/:action',  players.playlistMedia);
 router.post('/api/setplaylist/:playerid/:playlist',  players.setPlaylist);
+
+// overlay routes (kiosk scan actions)
+router.get('/api/overlay/:playerid', overlay.getState);
+router.post('/api/overlay/:playerid', overlay.setState);
+router.post('/api/overlay/:playerid/scan', overlay.triggerScan);
 
 router.param('playerid', players.loadObject)
 

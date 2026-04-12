@@ -1,28 +1,29 @@
 #!/usr/bin/env python3
 """
-PiSignageKiosk -- Main integration class
+PiSignageKiosk -- Headless hardware bridge
 
 Replaces TSV6's EnhancedVideoPlayer. piSignage handles all video/image playback.
+The overlay is now rendered inside piSignage's Chromium browser via a custom layout.
+
 This class manages:
   - Barcode scanning (reuses TSV6 OptimizedBarcodeScanner)
   - AWS IoT MQTT (reuses TSV6 ResilientAWSManager)
-  - Tkinter overlay for barcode flow images (OverlayWindowManager)
+  - piSignage overlay API bridge (pushes state via REST -> socket -> browser)
   - piSignage API for optional pause/resume (PiSignageClient)
   - NFC emulator, servo control, ToF sensor (unchanged from TSV6)
 
 Usage:
     This module is meant to be imported by TSV6's production_main.py as a
-    drop-in replacement for EnhancedVideoPlayer. The overlay_manager and
-    pisignage_client modules must be on PYTHONPATH (or installed).
+    drop-in replacement for EnhancedVideoPlayer.
 """
 
 import logging
+import signal
 import threading
 import time
-import tkinter as tk
 from typing import Any, Optional
 
-from .overlay_manager import OverlayWindowManager, OverlayState
+from .overlay_manager import OverlayManager, OverlayState
 from .pisignage_client import PiSignageClient
 
 # TSV6 imports -- these come from the tsrpi5 codebase on the Pi.
@@ -41,8 +42,9 @@ class PiSignageKiosk:
     """
     Drop-in replacement for TSV6 EnhancedVideoPlayer.
 
-    piSignage handles video playback. This class provides the same interface
-    that production_main.py expects for barcode flow callbacks.
+    piSignage handles video playback. The custom layout HTML in the player's
+    Chromium browser renders the overlay. This class bridges hardware events
+    to the server's overlay API.
     """
 
     def __init__(
@@ -57,15 +59,14 @@ class PiSignageKiosk:
         screen_height: int = 480,
         mute_audio_on_overlay: bool = True,
     ) -> None:
-        # Overlay manager (local tkinter, <50ms latency)
-        self.overlay = OverlayWindowManager(
-            event_images_dir=event_images_dir,
-            screen_width=screen_width,
-            screen_height=screen_height,
-            mute_audio=mute_audio_on_overlay,
+        # Overlay manager (headless API bridge -- pushes state to server)
+        self.overlay = OverlayManager(
+            server_url=pisignage_server_url,
+            username=pisignage_user,
+            password=pisignage_password,
         )
 
-        # piSignage API client (remote, non-critical)
+        # piSignage API client (for pause/resume, discovery)
         self.pisignage: Optional[PiSignageClient] = None
         if pisignage_server_url and pisignage_user and pisignage_password:
             self.pisignage = PiSignageClient(
@@ -81,11 +82,11 @@ class PiSignageKiosk:
         self.aws_manager: Any = aws_manager
         self.memory_optimizer: Any = memory_optimizer
 
-        # The tkinter root -- set after setup()
-        self.root: Optional[tk.Tk] = None
-
         # Barcode scanner -- will be set by production_main.py or caller
         self.barcode_scanner: Any = None
+
+        # Shutdown event for clean exit
+        self._shutdown = threading.Event()
 
     # ------------------------------------------------------------------
     # Setup -- called from main thread
@@ -93,10 +94,9 @@ class PiSignageKiosk:
 
     def setup(self) -> None:
         """
-        Initialize the overlay window and discover piSignage player.
-        Must be called from the main thread.
+        Initialize the overlay bridge and discover piSignage player.
         """
-        self.root = self.overlay.setup()
+        self.overlay.setup()
 
         # Discover piSignage player in background
         if self.pisignage:
@@ -105,7 +105,7 @@ class PiSignageKiosk:
                 daemon=True,
             ).start()
 
-        logger.info("PiSignageKiosk setup complete")
+        logger.info("PiSignageKiosk setup complete (headless mode)")
 
     def _discover_pisignage_player(self) -> None:
         """Background task to discover this Pi's player on the piSignage server."""
@@ -114,9 +114,11 @@ class PiSignageKiosk:
             player_id = self.pisignage.discover_player()
             if player_id:
                 logger.info("piSignage player discovered: %s", player_id)
+                # Set the player ID on the overlay manager so it can push states
+                self.overlay.player_id = player_id
             else:
                 logger.warning(
-                    "piSignage player not found -- remote control disabled"
+                    "piSignage player not found -- overlay commands disabled"
                 )
 
     # ------------------------------------------------------------------
@@ -126,8 +128,6 @@ class PiSignageKiosk:
     def display_processing_image(self) -> None:
         """Show processing overlay. Called immediately after barcode published to AWS."""
         self.overlay.show_processing()
-        if self.pisignage:
-            self.pisignage.toggle_pause()
 
     def display_product_image(self, product_data: dict[str, Any]) -> None:
         """
@@ -144,18 +144,9 @@ class PiSignageKiosk:
             self.overlay.hide()
             return
 
-        if self.image_manager:
-
-            def on_image_ready(image_path: Any, success: bool) -> None:
-                if success and image_path:
-                    self.overlay.show_product_image(str(image_path), product_name)
-                else:
-                    logger.warning("Product image download failed")
-                    self.overlay.hide()
-
-            self.image_manager.download_image(image_url, on_image_ready)
-        else:
-            self.overlay.hide()
+        # For the browser-based overlay, we pass the image URL directly
+        # The custom layout JS will load the image in the browser
+        self.overlay.show_product_image(image_url, product_name)
 
     def display_no_match_image(self) -> None:
         """Show no-match overlay. Called on noMatch AWS response."""
@@ -209,33 +200,42 @@ class PiSignageKiosk:
     def run(self) -> None:
         """
         Start the kiosk main loop.
-        Blocks on tkinter mainloop -- call from the main thread.
+        Headless mode: blocks on shutdown event (no tkinter mainloop needed).
         """
-        if self.root is None:
+        if not self.overlay:
             self.setup()
 
-        if self.root is None:
-            raise RuntimeError("setup() failed -- root window not created")
-
         logger.info("=" * 60)
-        logger.info("TSV6-piSignage Kiosk -- RUNNING")
+        logger.info("TSV6-piSignage Kiosk -- RUNNING (headless)")
         logger.info("piSignage handles video playback")
+        logger.info("Browser overlay handles scan display")
         logger.info("Barcode scanning active")
         logger.info("AWS IoT integration active")
         logger.info("=" * 60)
 
+        # Register signal handlers for clean shutdown
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        signal.signal(signal.SIGINT, self._signal_handler)
+
         try:
-            self.root.mainloop()
+            # Block until shutdown signal
+            self._shutdown.wait()
         except KeyboardInterrupt:
+            pass
+        finally:
             self.cleanup()
+
+    def _signal_handler(self, signum: int, frame: Any) -> None:
+        logger.info("Received signal %d, shutting down...", signum)
+        self._shutdown.set()
 
     def cleanup(self) -> None:
         """Clean up all resources."""
         logger.info("Cleaning up PiSignageKiosk...")
 
-        # Resume piSignage video if it was paused
-        if self.pisignage and self.overlay.state != OverlayState.IDLE:
-            self.pisignage.toggle_pause()
+        # Return overlay to idle
+        if self.overlay.state != OverlayState.IDLE:
+            self.overlay.hide()
 
         self.overlay.destroy()
 
