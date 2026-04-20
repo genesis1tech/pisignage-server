@@ -40,7 +40,7 @@ module.exports = {
         }
     },
     session: {
-        secret: 'piSignage'
+        secret: process.env.SESSION_SECRET || require('crypto').randomBytes(32).toString('hex')
     },
 
     filenameRegex:          /[&\/\\#,+()$~%'":*?<>{}]/g,

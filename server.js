@@ -142,9 +142,30 @@ ioNew.sockets.on('error', function (err) {console.log("caught ECONNRESET error 5
 process.on('uncaughtException', function(err, origin) {
     fs.writeSync(
         process.stderr.fd,
-        '***WARNING***  Caught exception: '+err+', Exception origin: '+origin + '*******\n'
+        '***FATAL***  Caught exception: '+err+', Exception origin: '+origin + '*******\n'
     );
-})
+    process.exit(1);
+});
+
+// Graceful shutdown
+function gracefulShutdown(signal) {
+    console.log('Received ' + signal + '. Shutting down gracefully...');
+    server.close(function() {
+        console.log('HTTP server closed');
+        mongoose.connection.close(false, function() {
+            console.log('MongoDB connection closed');
+            process.exit(0);
+        });
+    });
+    // Force exit after 10 seconds if graceful shutdown fails
+    setTimeout(function() {
+        console.error('Forced shutdown after timeout');
+        process.exit(1);
+    }, 10000);
+}
+
+process.on('SIGTERM', function() { gracefulShutdown('SIGTERM'); });
+process.on('SIGINT', function() { gracefulShutdown('SIGINT'); });
 
 // Expose app
 module.exports = app;
